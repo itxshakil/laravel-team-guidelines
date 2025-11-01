@@ -5,17 +5,17 @@
 
 ## 🧭 Navigation
 
-| Section                                        | Description                                      |
-| ---------------------------------------------- | ------------------------------------------------ |
-| [Architecture](./docs/architecture.md)         | Structuring scalable Laravel projects.           |
-| [Coding Standards](./docs/coding-standards.md) | Code style, naming, and formatting rules.        |
-| [Database](./docs/database.md)                 | Schema design and query optimization.            |
-| [Deployment](./docs/deployment.md)             | Safe and repeatable deployment practices.        |
-| [Git Standards](./docs/git-standards.md)       | Branching, commits, and pull request etiquette.  |
-| [Performance](./docs/performance.md)           | Making apps lean, fast, and cache-aware.         |
-| [Security](./docs/security.md)                 | Protecting code, data, and environments.         |
-| [Team Processes](./docs/team-processes.md)     | Review cycles, sprints, and collaboration norms. |
-| [Testing](./docs/testing.md)                   | Unit, feature, and integration testing.          |
+| Section                                | Description                                      |
+|----------------------------------------| ------------------------------------------------ |
+| [Architecture](./architecture.md)      | Structuring scalable Laravel projects.           |
+| [Coding Standards](./coding-standards.md) | Code style, naming, and formatting rules.        |
+| [Database](./database.md)           | Schema design and query optimization.            |
+| [Deployment](./deployment.md)       | Safe and repeatable deployment practices.        |
+| [Git Standards](./git-standards.md) | Branching, commits, and pull request etiquette.  |
+| [Performance](./performance.md)     | Making apps lean, fast, and cache-aware.         |
+| [Security](./security.md)           | Protecting code, data, and environments.         |
+| [Team Processes](./team-processes.md) | Review cycles, sprints, and collaboration norms. |
+| [Testing](./testing.md)            | Unit, feature, and integration testing.          |
 
 ---
 
