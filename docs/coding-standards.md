@@ -63,6 +63,9 @@
 * **PSR-12 as base**, Laravel’s flavor on top.
 * 120 characters max per line — readable on split screens.
 * **Use `snake_case`** for database columns, **`camelCase`** for variables/methods, and **`PascalCase`** for classes.
+* Always ensure third-party libraries (Bootstrap, jQuery, Font Awesome) use the same version across the entire project.
+* Prefer locally stored CSS/JS over CDNs for predictable builds.
+* Never place CSS or JS inside Blade/HTML — always extract into proper files or components.
 * Keep **imports alphabetized and grouped** (classes, traits, facades).
 
 ```php
