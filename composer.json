@@ -9,8 +9,7 @@
         "rector/rector": "^2.2"
     },
     "scripts": {
-      "lint": "vendor/bin/pint",
-      "lint:fix": "vendor/bin/pint --dirty",
+        "lint": "vendor/bin/pint",
         "setup": [
             "php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "php artisan key:generate",
