@@ -194,6 +194,7 @@ Every pull request should follow our **PR Template** and include:
 
 ## 📘 Reference Links
 
+* 🧠 [Issue Labeling Standards](./issue-labeling.md)
 * 🧠 [Conventional Commits](https://www.conventionalcommits.org)
 * 📦 [Git Branch Naming Guide](https://nvie.com/posts/a-successful-git-branching-model/)
 * 🚀 [Laravel Deployment Checklist](https://laravel.com/docs/deployment)
