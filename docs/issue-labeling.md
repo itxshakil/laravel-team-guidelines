@@ -160,8 +160,59 @@ status: ready
 
 ---
 
+## ✍️ Writing Good Issues
+
+> Labels organize issues. **Clear writing gets them fixed.**
+> A good issue answers the questions a teammate would otherwise have to ask.
+
+### 1. Write a clear, specific title
+
+The title should explain the problem at a glance and stay searchable later.
+
+* ❌ `Login doesn't work`
+* ✅ `Login: app crashes when username contains special characters`
+
+### 2. Give enough context in the description
+
+For bugs, include the basics so no one has to ask:
+
+* **Steps to reproduce** — the exact actions you took
+* **Expected behavior** — what should have happened
+* **Actual behavior** — what actually happened (error messages help)
+* **Environment** — Laravel/PHP version, browser, and `local / staging / production`
+
+For features, describe the **problem you're solving** before the solution you imagine.
+
+> 💡 Use the [issue template](../templates/issue.md) so you don't miss anything.
+
+### 3. Add visuals when they help
+
+A screenshot, short screen recording, or log snippet often saves a round of back-and-forth. Annotate the part that matters and trim recordings to keep them focused.
+
+### 4. One issue per issue
+
+Keep each report to a single bug or request. If something has multiple parts, break it into smaller tasks and link them to a parent issue — it's easier to track and to pick up.
+
+### 5. Search before you open
+
+Check for an existing issue first. If you find one, add your details there instead of creating a duplicate.
+
+### 6. Close the loop
+
+When it's resolved, confirm the fix, close the issue with a short note (e.g. *"Verified on staging"*), and link any related issues or PRs.
+
+### Common mistakes to avoid
+
+* **Vague titles** that say nothing specific.
+* **Missing reproduction steps** — "it's broken" isn't actionable.
+* **Multiple problems** crammed into one issue.
+* **Duplicates** created without searching first.
+
+---
+
 ## 🔗 Related Docs
 
+* [🐛 Issue Template](../templates/issue.md)
 * [🌿 Branching & Git Strategy](./git-standards.md)
 * [🧠 Conventional Commits](https://www.conventionalcommits.org)
 
