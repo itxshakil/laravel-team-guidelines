@@ -1,208 +1,51 @@
-# 🧮 Database & Eloquent Design
+# Database
 
-> “A clean database schema is like a well-architected house — everything fits, flows, and makes sense without needing a map.”
+## Run the production engine in CI
 
----
+The admin's feature-usage report worked locally and in CI on SQLite and returned a 500 in production on MariaDB: error 1247, an aggregate alias used in `ORDER BY` in a way MariaDB rejects. SQLite is forgiving in exactly the places production isn't: types, `GROUP BY` rules, JSON functions, case sensitivity and locking.
 
-### 📑 Table of Contents
+If you can't run the production engine everywhere, run it in at least one CI job. Until then, treat raw expressions, `groupBy`, `orderByRaw` and JSON column queries as untested.
 
-1. [🧩 Core Philosophy](#-core-philosophy)
-2. [🧱 Schema & Naming](#-schema--naming)
-3. [🧠 Migrations](#-migrations)
-4. [⚙️ Eloquent Model Rules](#️-eloquent-model-rules)
-5. [🔗 Relationships](#-relationships)
-6. [🧮 Query Design](#-query-design)
-7. [🧰 Factories & Seeders](#-factories--seeders)
-8. [🔍 Performance & Optimization](#-performance--optimization)
-9. [📚 Additional Reading & Watchlist](#-additional-reading--watchlist)
-10. [✍️ Author](#️-author)
+## Migrations
 
----
+- `up()` only. Nobody runs `down()` in production, so an untested `down()` is a false sense of safety. Roll back by writing a new migration.
+- Every migration gets a unique timestamp. Two files with the same prefix run in filename order, which isn't always the order you meant.
+- One change per migration.
+- Write changes expand-then-contract: add the new column, deploy code that writes both, backfill, switch reads, and drop the old column in a later deploy. The previous release keeps working against the new schema during the deploy.
+- Once real customers exist, a migration must keep their rows. Write the backfill and test it on a copy of production data first.
 
-### 🧩 Core Philosophy
+## Spell out table names for Larastan
 
-1. **Database is the foundation.**
-   Every naming, constraint, and relationship choice echoes throughout the app — so treat migrations as code, not setup scripts.
-
-2. **Design for relationships, not for queries.**
-   Think in terms of *models interacting naturally* — not in terms of `joins` and foreign keys alone.
-
-3. **Let Eloquent do the heavy lifting.**
-   Don’t fight the ORM. Use its strengths — relationships, scopes, accessors, and mutators — before dropping into raw queries.
-
----
-
-### 🧱 Schema & Naming
-
-| Type        | Example                    | Convention                          |
-| ----------- | -------------------------- | ----------------------------------- |
-| Table       | `users`, `order_items`     | Always plural, `snake_case`         |
-| Column      | `first_name`, `created_at` | Consistent, descriptive             |
-| Foreign key | `user_id`                  | Singular, aligns with related model |
-| Pivot table | `post_tag`                 | Alphabetical order of models        |
-| Index       | `idx_users_email`          | Prefix with `idx_`, clear purpose   |
-
-**Example:**
+Larastan learns model columns by reading migrations statically. This hides the new columns from it:
 
 ```php
-Schema::create('user_profiles', function (Blueprint $table) {
-    $table->id();
-    $table->foreignId('user_id')->constrained()->cascadeOnDelete();
-    $table->string('phone')->nullable();
-    $table->timestamps();
-});
+foreach (['orders', 'carts'] as $table) {
+    Schema::table($table, fn (Blueprint $t) => $t->string('currency')->default('CAD'));
+}
 ```
 
----
+Analysis then fails on every model property that uses them. Write one literal `Schema::table('orders', ...)` call per table.
 
-### 🧠 Migrations
+## Keys and indexes
 
-* **Each migration does one thing well.**
-  Don’t mix schema changes with data migrations.
+- `foreignId('user_id')->constrained()->cascadeOnDelete()` unless deleting the parent must be blocked. Then say `restrictOnDelete()` and why.
+- Index every column used in a `where`, a join or an `orderBy` on a table that grows. A foreign key isn't always an index on every engine.
+- Singular `model_id` for foreign keys. Pivot tables are named in alphabetical order (`post_tag`).
 
-* **Never rename or delete columns** in production migrations — create new columns and handle data transition in a separate migration.
+## Queries
 
-* **Use `enum` sparingly.** Prefer string-based `status` with constants or enums in code.
+- Eager load with `with()`. Turn on `Model::preventLazyLoading()` outside production so N+1 queries fail in development.
+- `paginate()` for lists. `chunkById()` or `lazyById()` to walk big tables. Plain `chunk()` skips rows when the loop updates a column the query filters on, because the pages shift under it.
+- Select the columns you need on wide tables.
+- Multi-step writes go in `DB::transaction()`, with no external API calls inside ([Architecture](architecture.md#no-external-calls-inside-a-transaction)).
+- Concurrent updates use conditional writes (`where('status', 'pending')->update(...)`) or `lockForUpdate()`. Never read, decide in PHP, then write.
 
-  ```php
-  class OrderStatus
-  {
-      public const PENDING = 'pending';
-      public const SHIPPED = 'shipped';
-      public const CANCELLED = 'cancelled';
-  }
-  ```
+## Don't make the database your log store
 
-* **Indexes and constraints** are not optional — they’re your performance armor and integrity check.
+On a shared host, about 88% of slow queries were writes to the request log table, the database session table and the database cache, not the app's own queries. The request logger was also at the top of the PHP-FPM slow log.
 
----
+Request logs, sessions and cache can live in the main database while traffic is small. Plan to move them (log files or a log store for requests, Redis for cache, sessions and queues) before they compete with checkout for the same disk.
 
-### ⚙️ Eloquent Model Rules
+## Snapshots are not duplication
 
-* One model = one table.
-* Keep models **light** — no query logic in them. That’s for **Scopes** or **Repository/Service classes**.
-* Use **`fillable`** or **`guarded`** (never both empty).
-* Always define **relationships explicitly** — never rely on dynamic guessing.
-* Use **casts** for clarity:
-
-  ```php
-  protected $casts = [
-      'is_active' => 'boolean',
-      'settings' => 'array',
-      'joined_at' => 'datetime',
-  ];
-  ```
-
----
-
-### 🔗 Relationships
-
-* Always **name relationships semantically**:
-
-  ```php
-  public function posts() { return $this->hasMany(Post::class); }
-  public function manager() { return $this->belongsTo(User::class, 'manager_id'); }
-  ```
-
-* Use **`withDefault()`** for optional `belongsTo` relations — prevents null-checking chaos.
-
-  ```php
-  $this->belongsTo(Profile::class)->withDefault();
-  ```
-
-* **Avoid circular eager loads** — `with(['user.posts.comments.user'])` can explode queries.
-  Optimize using **`loadCount()`** and **`select()`** when only counts or partial data are needed.
-
----
-
-### 🧮 Query Design
-
-* Prefer **query scopes** over scattered query conditions:
-
-  ```php
-  public function scopeActive($query)
-  {
-      return $query->where('is_active', true);
-  }
-  ```
-
-* For complex logic, **use custom builder classes**:
-
-  ```php
-  class UserBuilder extends Builder {
-      public function withPremium() {
-          return $this->where('plan', 'premium');
-      }
-  }
-  ```
-
-* Always **paginate**, never `->get()` large datasets.
-
-* Cache frequent aggregates (counts, sums) using tags or cache keys that make sense.
-
----
-
-### 🧰 Factories & Seeders
-
-* Factories should generate **realistic** data — not random nonsense.
-
-  ```php
-  'email' => fake()->unique()->safeEmail(),
-  'joined_at' => now()->subDays(fake()->numberBetween(1, 365)),
-  ```
-
-* Seeders are for **environments**, not for real data.
-  Separate your seeders:
-
-  ```
-  ├── seeders/
-  │   ├── DatabaseSeeder.php
-  │   ├── DevSeeder.php
-  │   ├── TestSeeder.php
-  │   └── ProductionSeeder.php
-  ```
-
-* Never seed sensitive data or real emails. Use fakes even in staging.
-
----
-
-### 🔍 Performance & Optimization
-
-* Use **`lazy()` or `chunk()`** for big loops.
-* Index foreign keys and heavily queried columns.
-* Cache expensive joins with identifiers like `cache("user:{$id}:dashboard")`.
-* Use **database transactions** for multi-step writes.
-
-  ```php
-  DB::transaction(function () use ($order) {
-      $order->update(['status' => 'paid']);
-      $order->invoice()->create([...]);
-  });
-  ```
-
----
-
-> 🧭 **Rule of Thumb:**
-> “If a query makes you nervous to run in production, it needs a transaction, a limit, or a rethink.”
-
----
-
-### 📚 Additional Reading & Watchlist
-
-| Type       | Resource                                                                                                    | Why it’s worth it                               |
-| ---------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| 📖 Docs    | [Laravel Eloquent ORM](https://laravel.com/docs/eloquent)                                                   | The foundation of model–database interaction.   |
-| 📖 Article | [Eloquent Performance Patterns – Laravel News](https://laravel-news.com/eloquent-performance-patterns)      | Covers real-world optimizations beyond indexes. |
-| 📖 Guide   | [Laravel Beyond CRUD – Database Layer](https://spatie.be/guidelines/laravel-beyond-crud)                    | How to structure repositories and builders.     |
-| 🎥 Video   | [Laracasts – Eloquent Relationships Deep Dive](https://laracasts.com/series/eloquent-relationships)         | Practical examples of modeling real-world data. |
-| 🎥 Video   | [Optimizing Eloquent Queries](https://laracasts.com/series/eloquent-performance-tips)                       | Learn how to handle large datasets efficiently. |
-| 📖 Blog    | [Database Design Best Practices – PlanetScale](https://planetscale.com/blog/database-design-best-practices) | Schema planning and indexing insights.          |
-
----
-
-### ✍️ Author
-
-**Written & Maintained by:** [Shakil Alam](https://github.com/itxshakil)
-*Laravel Developer — crafting opinionated standards for scalable, maintainable applications.*
-
----
+Order lines, invoice addresses and purchase-time prices are copied on purpose. See [Architecture](architecture.md#some-data-is-duplicated-on-purpose) and [Money and payments](money-and-payments.md#store-what-you-cant-recompute-and-nothing-else).

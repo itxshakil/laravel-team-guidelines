@@ -63,16 +63,17 @@ return RectorConfig::configure()
         Rector\TypeDeclaration\Rector\ClassMethod\AddParamTypeDeclarationRector::class,
     ])
 
+    // Named on purpose: nine positional `true`s once switched on namedArgs without anyone noticing.
     ->withPreparedSets(
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
-        true,
+        deadCode: true,
+        codeQuality: true,
+        codingStyle: true,
+        typeDeclarations: true,
+        typeDeclarationDocblocks: true,
+        privatization: true,
+        naming: true,
+        namedArgs: false,
+        instanceOf: true,
     )->withSkip([
         RenameVariableToMatchMethodCallReturnTypeRector::class,
         RenameParamToMatchTypeRector::class,

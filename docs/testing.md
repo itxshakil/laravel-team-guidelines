@@ -1,248 +1,67 @@
-# 🧰 Testing & Quality Assurance
+# Testing
 
-> *“A test is not a chore — it’s a conversation with your future self.”*
-> We test to **build confidence**, not chase numbers.
-> Clean tests mirror clear thinking.
+## Write the failing test first
 
----
+For a bug, write the test that reproduces it and watch it fail before touching app code. A test written after the fix often passes for the wrong reason, and you only find out when the bug comes back.
 
-## 📚 Table of Contents
+## Shape
 
-1. [🎯 Purpose](#-purpose)
-2. [🧪 Testing Philosophy](#-testing-philosophy)
-3. [🧩 Test Structure](#-test-structure)
-4. [🧠 Types of Tests](#-types-of-tests)
-5. [🔬 Best Practices](#-best-practices)
-6. [🧰 Testing Tools](#-testing-tools)
-7. [⚙️ CI Integration](#️-ci-integration)
-8. [🚨 Debugging Rule](#-debugging-rule)
-9. [🧩 Golden Rule](#-golden-rule)
-10. [👨‍💻 Author](#-author)
+- PHPUnit classes, `final class OrderRefundTest extends TestCase`, methods named `test_refund_returns_the_tax_share_of_each_line(): void`. The name says the behaviour, so a failure reads like a bug report.
+- Arrange, act, assert, in that order, with a blank line between them.
+- Feature tests for anything that touches HTTP, the database or the container. Unit tests only for pure logic.
+- Build data with factories and their states. If you need a state twice, add it to the factory.
 
----
+## Tests never touch the network
 
-## 🎯 Purpose
+The unit suite here once took 288 seconds. 81 tests made up 94% of that, and none of them meant to make a network call. The chain was: a factory creates a hosting plan, an observer dispatches a job to write a help article, `QUEUE_CONNECTION=sync` runs it inline, a listener asks the local LLM for an embedding, and the LLM client used raw Guzzle, which `Http::fake()` can't see. Each call to a dead port cost about 2.2 seconds on Windows. On a machine with the LLM running, the same tests made real, random LLM calls.
 
-Testing isn’t about **coverage metrics** — it’s about **trust**.
-Trust that your app behaves the same **today**, **tomorrow**, and **under stress**.
+What fixed it, and what we do now:
 
-We write tests to:
+- `Http::preventStrayRequests()` in the base `TestCase`. An unfaked call fails at once with `StrayRequestException` instead of hanging. Fix it with `Http::fake()` in the test, never by removing the guard.
+- All app HTTP goes through the `Http` facade. A convention test fails if `app/` news up a Guzzle client.
+- The base `TestCase` binds harmless fakes for services that factories trigger by accident. A test that needs real behaviour overrides the binding with `$this->app->instance()`.
 
-* Catch regressions early
-* Document system behavior
-* Build team confidence during refactors
+Two traps when you port a client to the `Http` facade:
 
-> **Goal:** Write tests that are **meaningful**, **fast**, and **self-explanatory**.
+- **It doesn't throw on 4xx or 5xx.** Check `$response->failed()` or call `->throw()`, or a 504 sails through as an empty success.
+- **Catch `ConnectionException`, not `Throwable`.** `StrayRequestException` is a plain `RuntimeException`. Catch everything and your graceful "service is down" path swallows the test guard too.
 
----
+## Strict models in tests
 
-## 🧪 Testing Philosophy
+`Model::shouldBeStrict()` is on in tests, so a lazy load, a missing attribute or a silently discarded mass-assignment fails loudly. Child-to-parent access inside a loop needs eager loading or `chaperone()` on the relation.
 
-### 1. 🧩 Test Behavior, Not Implementation
+## Mock at the interface
 
-Write tests that express *what* the system does — not *how* it does it.
+Bind a Mockery double for the interface: `$this->app->instance(PaymentGatewayInterface::class, $mock)`. SDK objects (`PaymentIntent`, `SetupIntent`) are often `final`, so return a `stdClass` with the properties you need. Same for `final` resource classes: mock the client that hands them out.
 
-✅ `it_sends_email_after_order_placed()`
-❌ `it_calls_notification_service_send_method()`
+Fake what Laravel can fake: `Notification::fake()`, `Mail::fake()`, `Bus::fake()`, `Event::fake([OnlyThis::class])`. Then assert the behaviour, such as `Notification::assertSentTo($user, RenewalFailed::class)`, not which method was called.
 
-> If the internals change but the business rule doesn’t — your test should still pass.
+## Turn conventions into tests
 
----
+A rule in a doc gets missed in review. A rule in a test doesn't. One `ViewConventionsTest` here scans the codebase and fails when:
 
-### 2. ⚡ Fast Feedback > Perfect Isolation
+- a public form is missing the spam shield component after `@csrf`,
+- any input reuses the honeypot field's name (that would silently quarantine every real customer who filled it in),
+- an `<img>` has no `alt` or no loading hint, or a page has more than one `fetchpriority="high"`,
+- an icon-only button has no `aria-label`,
+- `transition: all` appears in CSS,
+- code in `app/` sends HTTP without the facade.
 
-Run tests frequently.
-Use **unit tests** for logic and **feature tests** for end-to-end flow.
+`JobRetryPolicyTest` does the same for jobs: every job declares tries and a timeout, and long jobs sit on the long connection. These tests are cheap, run in milliseconds and catch a whole class of mistake for good. When a review comment is "we always do X", ask whether X can be a test.
 
-> Speed gives confidence — confidence drives refactoring.
+## Watch the assertion count
 
----
+A translation test here scans for literal `__('key')` calls and checks each key exists in every language file. A refactor that changed an enum's labels to `__("invoices.terms.{$this->value}")` hid 7 keys from it. The suite stayed green.
 
-### 3. 💬 Every Test Should Teach Something
+The only signal was the total assertion count: 7 lower than the base branch plus the new tests. After a refactor, compare the totals. If yours is lower, run both branches with `--log-junit` and diff the per-test counts to find what stopped being checked.
 
-A teammate reading your test should learn **what** matters to the business.
+## Components with named slots
 
-> If a test reads like documentation, you’re doing it right.
+Rendering a component that takes a named `<x-slot>` inline with `$this->blade()` leaves an output buffer open, and PHPUnit marks the test risky. Test slot output by requesting a real page that uses the component.
 
----
+## Keep the suite fast
 
-### 4. 🚨 Fail Loudly
-
-Never hide the “why” behind vague assertions.
-
-```php
-$this->assertEquals('paid', $order->status, 'Order should be marked as paid after processing');
-```
-
-> A failing test should tell you **exactly** what broke — not just *that* it broke.
-
----
-
-## 🧩 Test Structure
-
-```
-tests/
-├── Feature/
-│   ├── Http/
-│   │   ├── Orders/
-│   │   │   ├── CreateOrderTest.php
-│   │   │   ├── CancelOrderTest.php
-│   │   │   └── RefundOrderTest.php
-│   │   └── Users/
-│   └── Api/
-│       └── PaymentWebhookTest.php
-│
-├── Unit/
-│   ├── Services/
-│   │   ├── PaymentServiceTest.php
-│   │   └── ReportServiceTest.php
-│   ├── Actions/
-│   │   └── CreateOrderTest.php
-│   └── Helpers/
-│       └── MoneyFormatterTest.php
-│
-└── Datasets/
-    ├── order-data.php
-    └── user-profiles.php
-```
-
-> 📁 **Naming Rule:**
-> Test filenames must mirror the class or feature — no “MiscTest.php”.
-
----
-
-## 🧠 Types of Tests
-
-### **Unit Tests**
-
-Small, isolated, lightning-fast.
-
-```php
-test('it calculates discount correctly', function () {
-    $service = new DiscountService;
-    expect($service->calculate(200, 10))->toBe(180);
-});
-```
-
-No database. No filesystem. No HTTP.
-Just **logic** and **expectations**.
-
----
-
-### **Feature Tests**
-
-Test the **flow** — from request to response.
-
-```php
-test('user can place an order successfully', function () {
-    $user = User::factory()->create();
-    $product = Product::factory()->create();
-
-    actingAs($user)
-        ->postJson('/orders', ['product_id' => $product->id])
-        ->assertStatus(201)
-        ->assertJson(['status' => 'pending']);
-});
-```
-
-Use Laravel helpers like `actingAs()`, `getJson()`, `postJson()`.
-
----
-
-### **Integration Tests**
-
-Verify how systems talk to each other — database, service, and APIs.
-
-```php
-Http::fake(['stripe.com/*' => Http::response(['status' => 'success'], 200)]);
-```
-
-Use **fakes** for third-party services — never hit real APIs.
-
----
-
-### **Browser Tests (Optional)**
-
-For apps with frontend stacks (Inertia/Vue).
-
-> Use **Laravel Dusk** or **Playwright** for end-to-end UI flow.
-
----
-
-## 🔬 Best Practices
-
-* ✅ **Name tests like sentences**
-  `it_sends_email_after_successful_order()`
-  not `test_email_sent()`
-
-* ✅ Follow the **Arrange → Act → Assert** structure:
-
-  ```php
-  $order = Order::factory()->create(['status' => 'pending']);
-  ProcessOrder::run($order);
-  $this->assertEquals('paid', $order->fresh()->status);
-  ```
-
-* ✅ Use **Factories**, not manual setups.
-
-* ✅ Keep **one behavior per test** (unless tightly related).
-
-* ✅ Mock **sparingly** — use fakes for clarity.
-
-* ❌ Don’t test **Laravel internals** — trust the framework.
-
----
-
-## 🧰 Testing Tools
-
-| Tool                     | Purpose                             | Notes                            |
-| ------------------------ | ----------------------------------- | -------------------------------- |
-| **PestPHP**              | Testing framework                   | Clean, readable syntax           |
-| **Laravel Test Helpers** | Simulate HTTP, DB, queues           | `actingAs()`, `postJson()`, etc. |
-| **Mockery**              | Mock dependencies                   | For edge integrations only       |
-| **Laravel Fakes**        | Replace real services (Mail, Queue) | `Mail::fake()`, `Queue::fake()`  |
-| **Pint**                 | Code style checker                  | Run `pint` before PRs            |
-| **PHPStan**              | Static analysis                     | Catches bugs early               |
-
----
-
-## ⚙️ CI Integration
-
-Every pull request should automatically run:
-
-* ✅ `composer test`
-* ✅ `php artisan test --parallel`
-* ✅ `vendor/bin/pint --test`
-* ✅ `vendor/bin/phpstan analyse`
-
-> 💡 If tests fail, fix the **code**, not the **test** — unless the rule changed.
-
----
-
-## 🚨 Debugging Rule
-
-* Use `logger()` or `ray()` locally.
-* Never commit `dd()`, `dump()`, or `console.log()`.
-* For shared debugging, create a **temporary branch**:
-
-```
-git checkout -b debug/payment-sync
-git push origin debug/payment-sync
-```
-
-> 🧹 Temporary branches live short, teach much, and die young.
-
----
-
-## 🧩 Golden Rule
-
-> “A failing test is a gift — it’s your system telling you exactly where it hurts.”
-
----
-
-## 👨‍💻 Author
-
-**Shakil Alam**
-Laravel Developer | [GitHub: itxshakil](https://github.com/itxshakil)
-
----
+- Run the narrowest set while you work: `php artisan test --compact --filter=OrderRefund`, or one file.
+- Read the failing test and the code once, fix everything you can see, then run. Don't loop edit-run-edit on a suite that takes minutes.
+- Use `--parallel` in CI.
+- A slow test is usually a stray network call, a real sleep, or a factory building far more than the test needs. Profile with `--log-junit` and sort by time.
