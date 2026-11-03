@@ -1,51 +1,18 @@
-# 🧭 Laravel Team Guidelines Docs
+# Guides
 
-> **Opinionated. Practical. Collaborative.**
-> Documentation for teams that value **clarity, craftsmanship, and shared growth** — built around real-world Laravel experience.
+| Guide | Read it when you're |
+|---|---|
+| [Architecture](architecture.md) | adding a feature, a service or an integration |
+| [Coding standards](coding-standards.md) | writing any PHP |
+| [Money and payments](money-and-payments.md) | touching prices, checkout, refunds or renewals |
+| [Jobs and queues](jobs-and-queues.md) | writing a job, a listener or a scheduled command |
+| [Database](database.md) | writing a migration or a query |
+| [Testing](testing.md) | writing or speeding up tests |
+| [Security](security.md) | adding a policy, a public form, a guard or a CSP change |
+| [Frontend](frontend.md) | building a view, a form or a component |
+| [Running in production](production.md) | deploying, reading logs or setting up alerts |
+| [Docs and decisions](docs-and-decisions.md) | writing an ADR, a runbook or a comment |
+| [Git and reviews](git-and-reviews.md) | committing, opening a PR or setting up CI |
+| [Issues](issues.md) | filing or closing an issue |
 
-## 🧭 Navigation
-
-| Section                                | Description                                      |
-|----------------------------------------| ------------------------------------------------ |
-| [Architecture](./architecture.md)      | Structuring scalable Laravel projects.           |
-| [Coding Standards](./coding-standards.md) | Code style, naming, and formatting rules.        |
-| [Database](./database.md)           | Schema design and query optimization.            |
-| [Deployment](./deployment.md)       | Safe and repeatable deployment practices.        |
-| [Git Standards](./git-standards.md) | Branching, commits, and pull request etiquette.  |
-| [Performance](./performance.md)     | Making apps lean, fast, and cache-aware.         |
-| [Security](./security.md)           | Protecting code, data, and environments.         |
-| [Team Processes](./team-processes.md) | Review cycles, sprints, and collaboration norms. |
-| [Testing](./testing.md)            | Unit, feature, and integration testing.          |
-
----
-
-> 🗣️ Every edit that improves readability or clarity helps the entire team move faster.
-
----
-
-## 🧠 Note
-
-> 🪶 **This is a living document.**
-
-These docs reflect how we work *today*, not forever.
-Review them often. Challenge them. Refine them — together.
-
----
-
-## ❤️ Credits
-
-Inspired by:
-
-* [alexeymezenin/laravel-best-practices](https://github.com/alexeymezenin/laravel-best-practices)
-* [xqsit94/laravel-coding-guidelines](https://github.com/xqsit94/laravel-coding-guidelines)
-* [protonemedia/laravel-guidelines](https://github.com/protonemedia/laravel-guidelines)
-* Collective wisdom from Laravel teams across the world 🌍
-
----
-
-## 👨‍💻 Author
-
-**Shakil Alam**
-Laravel Developer | [GitHub: itxshakil](https://github.com/itxshakil)
-
----
+Templates for issues and pull requests are in [`templates/`](../templates).
