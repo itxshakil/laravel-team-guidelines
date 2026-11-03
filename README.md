@@ -1,106 +1,47 @@
-# 🧭 Laravel Team Guidelines
+# Laravel Team Guidelines
 
-> **Opinionated. Practical. Collaborative.**
-> Standards built for **Laravel teams of 3–10 developers** who value quality, clarity, and shared growth.
+How we build and run Laravel apps, written down from what went wrong and what held up in production.
 
----
+Most of this comes from running a hosting and billing platform: card payments, auto-renewals, server provisioning over SSH and third-party APIs, queue workers, a customer portal and an admin panel. Where a rule exists because something broke, the doc says what broke. A rule you can't trace to a reason is a rule nobody follows.
 
-![Laravel](https://img.shields.io/badge/Laravel-Guidelines-FF2D20?logo=laravel\&logoColor=white)
-![PHP](https://img.shields.io/badge/PHP-8.4+-777BB4?logo=php\&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Status](https://img.shields.io/badge/Status-Living%20Document-blue)
+## If you only read one section
 
----
+1. **Controllers validate, authorize and delegate.** Work happens in single-purpose Actions; multi-step flows and third-party APIs live in Services behind an interface.
+2. **Never call an external API inside a database transaction.** A rollback can't take back a charge or a created server.
+3. **Every job can run late, run twice, or run alongside a copy of itself.** Re-read state at the top of `handle()` and make the work idempotent.
+4. **An unknown payment outcome is not a decline.** A timeout or a 5xx means "we don't know yet", and retrying blind can charge a card twice.
+5. **Store money you can't recompute later.** Don't store money you can compute from the same row.
+6. **Tests never touch the network.** `Http::preventStrayRequests()` in the base test case, plus `Model::shouldBeStrict()`.
+7. **If a convention can be checked by a test, write the test.** Docs and code review miss things; a failing test doesn't.
+8. **Open work is a GitHub issue, not a doc.** Decisions go in ADRs, procedures in runbooks.
+9. **Production uses the same database engine as CI**, or you find the differences in production.
+10. **Logs and alerts are a product.** If an alert fires 78 times for one cause, it will be ignored on the day it matters.
 
-<details>
-<summary><strong>📑 Table of Contents</strong></summary>
+## The guides
 
-1. [📘 Purpose](#-purpose)
-2. [🧩 Philosophy](#-philosophy)
-3. [📂 Repository Structure](#-repository-structure)
-4. [🤝 Contributing](#-contributing)
-5. [🧠 Note](#-note)
-6. [❤️ Credits](#-credits)
-7. [👨‍💻 Author](#-author)
+| Guide | Covers |
+|---|---|
+| [Architecture](docs/architecture.md) | Request flow, Actions and Services, interfaces, events, DTOs |
+| [Coding standards](docs/coding-standards.md) | Style, naming, comments, the small rules Pint can't enforce |
+| [Money and payments](docs/money-and-payments.md) | Cents, rounding, idempotency keys, webhooks, renewals |
+| [Jobs and queues](docs/jobs-and-queues.md) | Writing safe jobs, retries, workers, `retry_after` |
+| [Database](docs/database.md) | Migrations, indexes, snapshots, engine differences |
+| [Testing](docs/testing.md) | What to test, isolation, convention tests, speed |
+| [Security](docs/security.md) | Policies, guards, rate limits, CSP, secrets |
+| [Frontend](docs/frontend.md) | Blade, states, accessibility, motion, CSS traps |
+| [Running in production](docs/production.md) | Deploys, logs, alerts, proxies, backups |
+| [Docs and decisions](docs/docs-and-decisions.md) | ADRs, runbooks, issues, comments that age well |
+| [Git and reviews](docs/git-and-reviews.md) | Commits, hooks, pull requests, CI |
+| [Issues](docs/issues.md) | Writing and labelling issues people can act on |
 
-</details>
+`examples/` holds short PHP files that show the patterns from these guides. CI runs Pint over them with this repo's `.pint.json`, and `rector.php` and `phpstan.neon` are starting configs to copy into a project.
 
----
+## Changing a guideline
 
-## 📘 Purpose
+Open a pull request. Say what happened that makes the current rule wrong or missing. "I prefer" is a fine start for a discussion, but a rule lands when it has a reason someone else can check.
 
-This repository serves as a **central handbook** for how we build, review, and maintain Laravel applications — together.
-It’s not meant to be cloned or executed, but **read, discussed, and improved**.
+## Credits
 
-### You’ll find:
+Earlier versions drew on [alexeymezenin/laravel-best-practices](https://github.com/alexeymezenin/laravel-best-practices), [xqsit94/laravel-coding-guidelines](https://github.com/xqsit94/laravel-coding-guidelines) and [protonemedia/laravel-guidelines](https://github.com/protonemedia/laravel-guidelines).
 
-* ✅ **Coding Standards** – clean, consistent PHP & Laravel code
-* 🏗️ **Architecture Principles** – scalable and maintainable structures
-* 🔒 **Security Guidelines** – protecting code and data at every layer
-* 🚀 **Deployment Rules** – environment sanity and production safety
-* 🔁 **Team Workflow** – pull requests, reviews, and communication
-
----
-
-## 🧩 Philosophy
-
-> *“Great teams don’t just write code — they craft consistency.”*
-
-* **Clarity over cleverness** → Readable > Magical
-* **Laravel-first mindset** → Follow conventions before inventing new ones
-* **Shared accountability** → Every commit matters
-* **Continuous evolution** → Update as we learn
-
----
-
-## 📂 Repository Structure
-
-| Path                        | Purpose                                                                |
-| --------------------------- | ---------------------------------------------------------------------- |
-| [**docs/**](./docs)         | Core guidelines — coding, architecture, reviews, security, deployment. |
-| [**examples/**](./examples) | Code references and recommended patterns.                              |
-| [**config/**](./config)     | Example config files for tools like Pint, PHPStan, Prettier, etc.      |
-| [**.github/**](./.github)   | Issue templates, pull request guidelines, and CI references.           |
-
-> 💡 Treat this repo as your **team manual**, not your project.
-> Every member should know it, question it, and contribute to it.
-
----
-
-## 🤝 Contributing
-
-We grow together.
-If something in our workflow feels outdated, confusing, or inconsistent — propose a change.
-
-1. Open a Pull Request describing the improvement.
-2. Include context or examples if possible.
-3. Keep discussions open, respectful, and focused on clarity.
-
-Every suggestion that helps **reduce friction and increase quality** is welcome.
-
----
-
-## 🧠 Note
-
-> 🪶 **This repository is designed to be read, not run.**
-
-It’s a **living, evolving guide** for how we think about code — a mirror of our team’s standards and discipline.
-Revisit it often. Question it often. Improve it often.
-
----
-
-## ❤️ Credits
-
-Inspired by:
-
-* [alexeymezenin/laravel-best-practices](https://github.com/alexeymezenin/laravel-best-practices)
-* [xqsit94/laravel-coding-guidelines](https://github.com/xqsit94/laravel-coding-guidelines)
-* [protonemedia/laravel-guidelines](https://github.com/protonemedia/laravel-guidelines)
-* Community wisdom from countless Laravel teams across the globe
-
----
-
-## 👨‍💻 Author
-
-**Shakil Alam**
-Laravel Developer | [GitHub: itxshakil](https://github.com/itxshakil)
+Maintained by [Shakil Alam](https://github.com/itxshakil). MIT licensed.

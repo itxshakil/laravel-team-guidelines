@@ -1,17 +1,43 @@
 name: CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
 jobs:
-  tests:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v4
+
+      - uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
-      - name: Install deps
-        run: composer install --no-progress --no-interaction --no-suggest
+          php-version: 8.3
+          tools: composer:v2
+          coverage: none
+
+      - name: Install Pint
+        run: composer install --no-progress --no-interaction
+
+      - name: Lint example PHP
+        run: for f in examples/*.php; do php -l "$f"; done
+
       - name: Pint
-        run: vendor/bin/pint
-      - name: Run tests
-        run: vendor/bin/phpunit --colors=always
+        run: vendor/bin/pint --test examples
+
+      # Relative links between the guides break when a doc is renamed or removed.
+      - name: Check relative links in Markdown
+        run: |
+          status=0
+          while IFS= read -r file; do
+            dir=$(dirname "$file")
+            for link in $(grep -oE '\]\([^)#:]+(#[^)]*)?\)' "$file" | sed -E 's/^\]\(//; s/\)$//; s/#.*$//'); do
+              [ -z "$link" ] && continue
+              if [ ! -e "$dir/$link" ]; then
+                echo "$file: broken link $link"
+                status=1
+              fi
+            done
+          done < <(git ls-files '*.md')
+          exit $status

@@ -1,321 +1,106 @@
-# 🏗️ Architecture Guidelines
+# Architecture
 
-> *Keep it clean. Keep it composable. Keep it Laravel.*
-> Architecture isn’t about rules — it’s about **readability, scalability, and flow**.
-> Great architecture tells a story your future self will thank you for.
-
----
-
-## 📚 Table of Contents
-
-1. [🎯 Core Principles](#-core-principles)
-2. [🧭 Folder Structure — A Scalable Blueprint](#-folder-structure--a-scalable-blueprint)
-3. [🧩 Application Architecture & Folder Structure](#-application-architecture--folder-structure)
-4. [🎯 Core Components](#-core-components)
-5. [🧠 Domain-Driven Subfolders](#-domain-driven-subfolders)
-6. [⚙️ ViewModels & Data Shaping](#️-viewmodels--data-shaping)
-7. [🧩 Repository Layer (Optional but Useful)](#-repository-layer-optional-but-useful)
-8. [🧰 Other Practical Conventions](#-other-practical-conventions)
-9. [🧠 Architectural Wisdom](#-architectural-wisdom)
-10. [👨‍💻 Author](#-author)
-
----
-
-## 🎯 Core Principles
-
-### 1. 🧩 Skinny Controllers, Fat Services
-
-Controllers are narrators — they tell the story, not act it out.
-
-* Handle **validation**, **authorization**, and **delegation** only.
-* Let **Services** or **Actions** do the heavy lifting.
-* Your controller should read like a clear sentence, not a puzzle.
-
-> **Bad:** `OrderController` deciding discount logic.
-> **Good:** `OrderService` handles it, while controller just says *“create order”*.
-
----
-
-### 2. 🧠 Business Logic Belongs in the Domain
-
-Your business rules deserve a first-class home. Put them where they belong:
-
-| Layer            | Purpose                          | Example                           |
-| ---------------- | -------------------------------- | --------------------------------- |
-| `app/Services`   | Multi-model or API-driven logic  | `PaymentService`, `ReportService` |
-| `app/Actions`    | Single-purpose, reusable actions | `ApproveUser`, `SendInvoice`      |
-| `app/Domain/...` | Organized domain-driven logic    | `Orders`, `Billing`, `Users`      |
-
-> If it’s about **what the business does**, it’s not the controller’s job — it’s the service layer’s story.
-
----
-
-### 3. ⚙️ Jobs for Heavy or Async Tasks
-
-Your app should never wait for something slow.
-
-* Use **Jobs** for:
-
-    * Emails
-    * Reports
-    * File processing
-    * External API calls
-
-Jobs should be:
-
-* **Idempotent** → retry-safe
-* **Self-contained** → holds its own data
-
-> Don’t block users for background work — **delegate and dispatch**.
-
----
-
-### 4. 🧱 Keep Models Pure & Predictable
-
-Models are data keepers — not decision-makers.
-
-* Avoid putting business logic directly in models.
-* Use:
-
-    * `scopeActive()`, `scopePaid()` → for filters
-    * Accessors & Mutators → for computed attributes
-* Models should **never cause side effects** like sending notifications or emails.
-
-> Treat models like mirrors — they reflect data, not logic.
-
----
-
-## 🧭 Folder Structure — A Scalable Blueprint
-
-> Not just folders — **boundaries for clarity**.
+## The request path
 
 ```
-app/
-├── Actions/
-│   ├── Orders/
-│   │   ├── CreateOrder.php
-│   │   ├── CancelOrder.php
-│   │   └── RefundOrder.php
-│   └── Users/
-│       ├── RegisterUser.php
-│       └── VerifyUser.php
-│
-├── Services/
-│   ├── PaymentService.php
-│   ├── NotificationService.php
-│   └── ReportService.php
-│
-├── Jobs/
-│   ├── SendInvoiceEmail.php
-│   ├── SyncInventoryJob.php
-│   └── ProcessRefundJob.php
-│
-├── Models/
-│   ├── Order.php
-│   ├── User.php
-│   └── Product.php
-│
-└── Http/
-    ├── Controllers/
-    ├── Middleware/
-    └── Requests/
+Route -> FormRequest -> Controller -> Action or Service -> Model -> Event -> queued Listeners
 ```
 
-> 🗂️ If someone new can open `/app` and instantly grasp what lives where — your architecture is working.
+- **FormRequest** validates and, through `authorize()` or a policy, decides who may do it. Controllers read `$request->validated()`, never `$request->all()`.
+- **Controllers** stay under about 30 lines per method. Validate, authorize, call one Action or Service, return a response. If a controller loops over records, the loop belongs somewhere else.
+- **Actions** (`app/Actions/<Area>/CreateOrderAction.php`) do one unit of work and have one public method. They are the easiest thing in the app to test.
+- **Services** (`app/Services/`) hold multi-step flows and wrap third-party APIs. Keep them stateless.
+- **Models** hold data, casts, scopes and small derived values. No HTTP calls, no mail.
 
----
+Stick to resource methods (`index`, `store`, `show`, `update`, `destroy`). `approveInvoice()` on a controller is a sign you're missing a resource: `InvoiceApprovalController@store` is usually the honest name.
 
-## 🧩 Application Architecture & Folder Structure
+## External services sit behind an interface
 
-> “Great architecture isn’t about patterns — it’s about **predictability**.
-> Every developer should know *where things live* and *why* they live there.”
-
----
-
-### 🧱 The Philosophy
-
-Our Laravel apps are structured around **clarity, composability, and purpose**.
-We don’t chase patterns for elegance; we choose them for **collaboration and scale**.
-
-> *Controllers tell the story, Services do the work, Models hold the data, Jobs take the load.*
-
----
-
-### 🗂️ Folder Layout Overview
-
-```
-app/
-├── Actions/
-├── Services/
-├── Domain/
-├── Http/
-├── Jobs/
-├── Events/
-├── Listeners/
-├── Observers/
-└── Policies/
-```
-
-Each directory has a clear purpose — no overlaps, no mystery.
-
----
-
-## 🎯 Core Components
-
-### **Controllers — The Storytellers**
-
-* High-level **narrators** — no business logic.
-* Handle **validation**, **authorization**, **delegation** only.
+Every third-party client (payment gateway, registrar, server panel, LLM) is injected as an interface and bound in a service provider.
 
 ```php
-public function store(StoreOrderRequest $request)
-{
-    $order = CreateOrder::run($request->validated());
-    return new OrderResource($order);
-}
+$this->app->singleton(PaymentGatewayInterface::class, StripePaymentGateway::class);
 ```
 
----
+Two reasons, both practical:
 
-### **Actions — Single-Purpose Executors**
+- Tests bind a Mockery double with `$this->app->instance(...)`. SDK classes are often `final`, so mocking them directly doesn't work.
+- When an interface method returns SDK objects, type it as `object` so a test can return a `stdClass` instead of building a fake SDK object.
 
-* Perfect for small, reusable units of work.
-* Keep them **pure** — one purpose, one entry point.
+All outbound HTTP goes through Laravel's `Http` facade, never a raw Guzzle client. `Http::fake()` can only intercept the facade, and a raw client in one service once made the test suite slow and non-deterministic (see [Testing](testing.md#tests-never-touch-the-network)).
+
+## No external calls inside a transaction
 
 ```php
-class CreateOrder
-{
-    public function __construct(
-        protected PaymentService $payment,
-        protected NotificationService $notify
-    ) {}
+// Wrong: if the insert after the charge fails, the rollback leaves a paid card and no order.
+DB::transaction(function () use ($cart) {
+    $charge = $this->gateway->charge($cart->totalCents());
+    Order::create([...]);
+});
+```
 
-    public function run(array $data)
+Charge first and record the result, or create the record as pending, commit, and then call out. Checkout here creates the order and its hosting items inside a transaction, commits, and only then calls the domain registrar for each domain item, because a registered domain can't be rolled back.
+
+## State changes fire events; side effects live in listeners
+
+Before this rule, mail and follow-up work was written inline at about 130 places. Four sign-up paths each sent the welcome email and the admin alert themselves, and the copies drifted.
+
+- An event is named in the past tense (`TicketReplied`, `ServiceRenewed`), carries models not arrays, and implements `ShouldDispatchAfterCommit`. Outside a transaction it fires immediately, so the interface costs nothing.
+- One listener per side effect, named for what it does: `SendWelcomeNotification`, `NotifyStaffOfNewTicket`. Let event discovery find them.
+- Listeners are queued (`ShouldQueueAfterCommit`). Inside a queued listener, send with `notifyNow()`, or the notification gets queued a second time.
+- The exceptions are listed at the class with a reason, such as a payment receipt that must go out even when the queue is down.
+
+"What happens when a ticket is replied to?" now has one answer: list the listeners for `TicketReplied`.
+
+## Live updates never fail the action
+
+If you broadcast over WebSockets (Reverb, Pusher), push through one publisher that:
+
+- defers to `DB::afterCommit()` itself,
+- sends with `ShouldBroadcastNow`, because a queued broadcast can sit behind a 25-minute job,
+- catches and logs any failure.
+
+Don't put `ShouldDispatchAfterCommit` on a broadcast event. Laravel then sends it inside a commit callback, so a broadcaster error is thrown out of `DB::commit()` and fails work that already succeeded. Broadcast payloads carry ids, statuses and labels, never whole models or personal data.
+
+## Enums for every status
+
+Statuses, types and modes are backed enums cast on the model. Give the enum the presentation too:
+
+```php
+enum TicketStatus: string implements HasBadge
+{
+    case Open = 'open';
+    case Closed = 'closed';
+
+    public function label(): string
     {
-        $order = Order::create($data);
-        $this->payment->charge($order);
-        $this->notify->orderCreated($order);
-        return $order;
+        return match ($this) {
+            self::Open => __('tickets.status.open'),
+            self::Closed => __('tickets.status.closed'),
+        };
     }
 }
 ```
 
----
+Without this, the same `@if ($status === 'open') badge-success` chain gets copied into every view and they drift. Write one literal translation key per case, never `__("tickets.status.{$this->value}")` (see [Testing](testing.md#watch-the-assertion-count)).
 
-### **Services — The Workhorses**
+## DTOs instead of array shapes
 
-* Handle cross-model logic or third-party integrations.
-* Always **stateless** and **testable**.
+An `array{name: string, cents: int, ...}` docblock is a type that PHP can't check. When you touch code that builds or reads one, turn it into a `final readonly class` in `app/DTOs/`. Don't convert untouched code in bulk. Hundreds of shapes converted in one PR are impossible to review.
 
-```php
-class PaymentService
-{
-    public function charge(Order $order)
-    {
-        // Stripe or Razorpay logic here
-    }
-}
-```
+Make the DTO refuse bad states in its constructor. A priced cart whose lines don't add up to its total should not be constructible.
 
----
+## Some data is duplicated on purpose
 
-## 🧠 Domain-Driven Subfolders
+Normalisation instincts will tell you to remove these. Don't.
 
-When your app grows, **group by domain**, not layer.
+- Orders snapshot the customer's name, email and address. An invoice shows who bought it then, not who owns the account now.
+- Order items keep the configuration and price at purchase time.
+- A local `payment_methods` table mirrors card brand, last four and expiry so the billing page doesn't call the gateway on every load.
+- Webhook calls are recorded in a table, not a cache key. That makes them the idempotency record: it survives restarts and can be audited.
 
-```
-app/Domain/Order/
-├── Models/Order.php
-├── Actions/CreateOrder.php
-├── Events/OrderCreated.php
-├── Listeners/SendOrderEmail.php
-├── Services/OrderCalculator.php
-└── Policies/OrderPolicy.php
-```
+Write the reason in a comment or an ADR next to the column. Otherwise the next person "fixes" it.
 
-> 💡 *Rule:* If a directory starts feeling like a junk drawer — it’s time for a domain split.
+## Nested route parameters arrive by position
 
----
-
-## ⚙️ ViewModels & Data Shaping
-
-Shape complex data before sending to frontend.
-
-```php
-class DashboardViewModel
-{
-    public function __construct(protected User $user) {}
-
-    public function data(): array
-    {
-        return [
-            'orders' => $this->user->orders()->latest()->limit(5)->get(),
-            'stats' => [
-                'total_spent' => $this->user->orders()->sum('total'),
-                'active_subscriptions' => $this->user->subscriptions()->active()->count(),
-            ],
-        ];
-    }
-}
-```
-
-Controller:
-
-```php
-return inertia('Dashboard', (new DashboardViewModel($user))->data());
-```
-
----
-
-## 🧩 Repository Layer (Optional but Useful)
-
-Repositories abstract **data access**, not logic.
-
-```php
-interface UserRepository
-{
-    public function findByEmail(string $email): ?User;
-}
-
-class EloquentUserRepository implements UserRepository
-{
-    public function findByEmail(string $email): ?User
-    {
-        return User::where('email', $email)->first();
-    }
-}
-```
-
-Use them when your data access patterns grow **complex**, not by default.
-
----
-
-## 🧰 Other Practical Conventions
-
-* ✅ Name Jobs, Events, Listeners after **intent**, not process.
-* ✅ Use DTOs for structured data passing.
-* ✅ Keep Observers for model-level events only.
-* ✅ Keep Policies focused on action authorization.
-* ✅ Document new architectural decisions in `/docs/architecture/decisions/`.
-
----
-
-## 🧠 Architectural Wisdom
-
-* **Composition > Inheritance** — inject dependencies, don’t extend.
-* **Stateless Services** — no hidden side effects.
-* **One Purpose per Unit** — each class answers a single “why.”
-* **Review Regularly** — architecture evolves as teams grow.
-* **Document Big Moves** — future devs should know *why*, not just *what*.
-
-> 💡 *Clean architecture isn’t fancy — it’s understandable.*
-> If a new developer can follow your flow without asking, you’ve done it right.
-
----
-
-## 👨‍💻 Author
-
-**Shakil Alam**
-Laravel Developer | [GitHub: itxshakil](https://github.com/itxshakil)
-
----
+Under a prefix like `suites/{suite}/members/{member}`, Laravel passes parameters to the controller in order. A method that only needs `$member` must still declare `Suite $suite` first, or it receives the suite in the `$member` slot and throws a `TypeError`. Implicit binding only binds type-hinted parameters, so add `Route::model('suite', Suite::class)` if middleware such as `can:view,suite` needs the model rather than a raw id.
